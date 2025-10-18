@@ -7,10 +7,17 @@ class Config:
     # Telegram
     TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
     
-    # Yandex Cloud
-    YANDEX_API_KEY = os.getenv('YANDEX_API_KEY', '')
-    YANDEX_FOLDER_ID = os.getenv('YANDEX_FOLDER_ID', '')
-    YANDEX_IAM_TOKEN = os.getenv('YANDEX_IAM_TOKEN', '')
+    # OpenRouter AI
+    OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    
+    # Модели OpenRouter (бесплатные варианты)
+    DEFAULT_MODEL = "google/gemini-flash-1.5"  # Быстрая и качественная
+    FALLBACK_MODEL = "meta-llama/llama-3-8b-instruct"  # Резервная модель
+    
+    # Настройки генерации
+    MAX_TOKENS = 1500
+    TEMPERATURE = 0.7
     
     # Database
     DB_NAME = os.getenv('DB_NAME', 'travel_bot')
@@ -24,7 +31,27 @@ class Config:
     # Environment
     ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
     
+    # Список доступных моделей для переключения
+    AVAILABLE_MODELS = {
+        "gemini": "google/gemini-flash-1.5",
+        "claude": "anthropic/claude-3-haiku", 
+        "llama": "meta-llama/llama-3-8b-instruct",
+        "wizard": "microsoft/wizardlm-2-8x22b"
+    }
+
     @classmethod
     def validate(cls):
+        """Валидация обязательных переменных окружения"""
+        missing_vars = []
+        
         if not cls.TELEGRAM_TOKEN:
-            raise ValueError("Missing required environment variable: TELEGRAM_TOKEN")
+            missing_vars.append("TELEGRAM_TOKEN")
+        
+        if not cls.OPENROUTER_API_KEY:
+            missing_vars.append("OPENROUTER_API_KEY")
+        
+        if missing_vars:
+            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+        
+        print("✅ Configuration validated successfully")
+        print(f"🤖 Using AI model: {cls.DEFAULT_MODEL}")
