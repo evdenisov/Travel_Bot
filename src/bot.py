@@ -130,14 +130,14 @@ async def get_travelers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return INTERESTS
 
 async def get_interests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получаем интересы и генерируем план через YandexGPT"""
+    """Получаем интересы и генерируем план через OpenRouter"""
     user_id = update.effective_user.id
     interests = update.message.text
     
     # Показываем что начали генерацию
     processing_msg = await update.message.reply_text(
         "🎯 Отлично! Собираю всю информацию...\n"
-        "🤖 Обращаюсь к YandexGPT для создания идеального маршрута...\n"
+        "🤖 Обращаюсь к AI для создания идеального маршрута...\n"
         "⏳ Это займет 15-30 секунд..."
     )
     
@@ -145,25 +145,20 @@ async def get_interests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user_data = {}
     if redis_manager and redis_manager.redis_client:
         user_data = redis_manager.get_all_user_data(user_id)
-        # Сбрасываем состояние
         redis_manager.set_user_state(user_id, None)
     else:
         user_data = temp_storage.get(user_id, {})
-        # Удаляем состояние из временного хранилища
         if user_id in temp_storage:
             temp_storage[user_id]['state'] = None
     
     # Добавляем интересы
     user_data['interests'] = interests
     
-    # Генерируем план через YandexGPT
+    # Генерируем план через OpenRouter вместо YandexGPT
     try:
-        from src.ai_yandexgpt import yandex_gpt
-        travel_plan = await asyncio.get_event_loop().run_in_executor(
-            None, yandex_gpt.generate_travel_plan, user_data
-        )
+        from src.ai_openrouter import openrouter_ai  # Импортируем новый класс
+        travel_plan = openrouter_ai.generate_travel_plan(user_data)
         
-        # Удаляем сообщение о процессе
         await processing_msg.delete()
         
         # Отправляем план частями (лимит Telegram 4096 символов)
@@ -184,9 +179,7 @@ async def get_interests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     # Финальное сообщение
     await update.message.reply_text(
         "✨ **План готов!**\n\n"
-        "Если хочешь спланировать еще одно путешествие - отправь /start\n"
-        "Нужна помощь? - /help\n"
-        "Проверить статус API - /status"
+        "Если хочешь спланировать еще одно путешествие - отправь /start"
     )
     
     return ConversationHandler.END

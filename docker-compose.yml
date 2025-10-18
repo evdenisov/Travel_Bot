@@ -4,31 +4,58 @@ services:
   bot:
     build: .
     environment:
+      # Telegram
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - YANDEX_API_KEY=${YANDEX_API_KEY}
-      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID}
-      - YANDEX_IAM_TOKEN=${YANDEX_IAM_TOKEN}
+      
+      # Yandex Cloud (опционально)
+      - YANDEX_API_KEY=${YANDEX_API_KEY:-}
+      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID:-}
+      - YANDEX_IAM_TOKEN=${YANDEX_IAM_TOKEN:-}
+      
+      # OpenRouter
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}
+      
+      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      
+      # Database
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-travel_bot}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD}
+      
+      # Logging
+      - LOG_LEVEL=INFO
     depends_on:
       - redis
+      - postgres
     restart: unless-stopped
     networks:
       - travel-bot-network
+    volumes:
+      - ./logs:/app/logs
 
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - travel-bot-network
+    restart: unless-stopped
 
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME:-travel_bot}
+      POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5432:5432"
     volumes:
@@ -36,21 +63,33 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - travel-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-travel_bot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   pgadmin:
     image: dpage/pgadmin4
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@travelbot.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
     ports:
       - "8080:80"
     depends_on:
       - postgres
     networks:
       - travel-bot-network
+    restart: unless-stopped
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 volumes:
   postgres_data:
+  redis_data:
+  pgadmin_data:
 
 networks:
   travel-bot-network:
