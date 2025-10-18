@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.db
+*.sqlite3
+logs/
+*.log
+.vscode/
+.idea/
+config/credentials.json
