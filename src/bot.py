@@ -26,7 +26,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 Привет, {user.first_name}! ✈️
 
 Я - твой AI-помощник для планирования путешествий! 
-Использую YandexGPT для создания персонализированных маршрутов.
+Использую современные AI-модели для создания персонализированных маршрутов.
 
 Давай спланируем твое идеальное путешествие! 
 
@@ -130,56 +130,105 @@ async def get_travelers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return INTERESTS
 
 async def get_interests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получаем интересы и генерируем план через OpenRouter"""
+    """Получаем интересы и генерируем несколько планов через OpenRouter"""
     user_id = update.effective_user.id
     interests = update.message.text
     
     # Показываем что начали генерацию
     processing_msg = await update.message.reply_text(
         "🎯 Отлично! Собираю всю информацию...\n"
-        "🤖 Обращаюсь к AI для создания идеального маршрута...\n"
-        "⏳ Это займет 15-30 секунд..."
+        "🤖 Обращаюсь к нескольким AI-моделям для создания вариантов маршрута...\n"
+        "⏳ Это займет 30-60 секунд..."
     )
     
     # Получаем все данные пользователя
     user_data = {}
     if redis_manager and redis_manager.redis_client:
         user_data = redis_manager.get_all_user_data(user_id)
+        # Сбрасываем состояние
         redis_manager.set_user_state(user_id, None)
     else:
         user_data = temp_storage.get(user_id, {})
+        # Удаляем состояние из временного хранилища
         if user_id in temp_storage:
             temp_storage[user_id]['state'] = None
     
     # Добавляем интересы
     user_data['interests'] = interests
     
-    # Генерируем план через OpenRouter вместо YandexGPT
+    # Генерируем несколько планов через OpenRouter
     try:
-        from src.ai_openrouter import openrouter_ai  # Импортируем новый класс
-        travel_plan = openrouter_ai.generate_travel_plan(user_data)
+        from src.ai_openrouter import openrouter_ai
         
+        # Выполняем запрос в отдельном потоке чтобы не блокировать бота
+        travel_plans = await asyncio.get_event_loop().run_in_executor(
+            None, openrouter_ai.generate_travel_plans, user_data, 3
+        )
+        
+        # Проверяем что планы сгенерированы
+        if not travel_plans or len(travel_plans) == 0:
+            await processing_msg.delete()
+            await update.message.reply_text(
+                "❌ Не удалось сгенерировать планы. Сервис временно недоступен.\n"
+                "Попробуйте позже или используйте /start для нового запроса."
+            )
+            return ConversationHandler.END
+        
+        # Удаляем сообщение о процессе
         await processing_msg.delete()
         
-        # Отправляем план частями (лимит Telegram 4096 символов)
-        if len(travel_plan) > 4000:
-            parts = [travel_plan[i:i+4000] for i in range(0, len(travel_plan), 4000)]
-            for i, part in enumerate(parts):
-                await update.message.reply_text(part)
-                await asyncio.sleep(1)
-        else:
-            await update.message.reply_text(travel_plan)
-            
-    except Exception as e:
-        logging.error(f"Error generating travel plan: {e}")
+        # Отправляем заголовок с информацией о сравнении
         await update.message.reply_text(
-            "❌ Произошла ошибка при генерации плана. Попробуйте позже или используйте /start для нового запроса."
+            f"✨ **Получено {len(travel_plans)} варианта плана от разных AI-моделей!**\n\n"
+            "🤖 *Сравните подходы разных моделей и выберите самый подходящий для вас.*\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        
+        # Отправляем каждый план с информацией о модели
+        for i, plan in enumerate(travel_plans, 1):
+            # Заголовок плана
+            header = f"**📋 ВАРИАНТ {i} из {len(travel_plans)}**\n"
+            header += f"📊 Длина: {plan['length']} символов\n"
+            header += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            
+            await update.message.reply_text(header)
+            
+            # Отправляем содержимое плана частями (уже содержит информацию о модели)
+            content = plan['content']
+            if len(content) > 4000:
+                parts = [content[i:i+4000] for i in range(0, len(content), 4000)]
+                for part in parts:
+                    await update.message.reply_text(part)
+                    await asyncio.sleep(1)
+            else:
+                await update.message.reply_text(content)
+            
+            # Разделитель между планами
+            if i < len(travel_plans):
+                await update.message.reply_text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                await asyncio.sleep(2)  # Пауза между планами
+            
+    except ImportError:
+        logging.error("OpenRouter service not found")
+        await processing_msg.delete()
+        await update.message.reply_text(
+            "❌ Сервис планирования временно недоступен.\n"
+            "Используйте /start для повторной попытки."
+        )
+    except Exception as e:
+        logging.error(f"Error generating travel plans with OpenRouter: {e}")
+        await processing_msg.delete()
+        await update.message.reply_text(
+            "❌ Произошла ошибка при генерации планов. Попробуйте позже или используйте /start для нового запроса."
         )
     
     # Финальное сообщение
     await update.message.reply_text(
-        "✨ **План готов!**\n\n"
-        "Если хочешь спланировать еще одно путешествие - отправь /start"
+        "🎉 **Все планы готовы!**\n\n"
+        "💡 *Сравните разные подходы и выберите самый подходящий вариант.*\n\n"
+        "Если хотите спланировать еще одно путешествие - отправьте /start\n"
+        "Нужна помощь? - /help\n"
+        "Проверить статус API - /status"
     )
     
     return ConversationHandler.END
@@ -205,7 +254,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Помощь"""
     help_text = """
-🤖 **Помощь по Travel Bot с YandexGPT**
+🤖 **Помощь по Travel Bot с AI**
 
 **Команды:**
 /start - Начать планирование путешествия
@@ -215,8 +264,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 **Как это работает:**
 1. Я задам 5 вопросов о вашем путешествии
-2. Использую YandexGPT для создания детального маршрута
-3. Вы получите персонализированный план с рекомендациями
+2. Использую несколько AI-моделей для создания разных вариантов маршрута
+3. Вы получите 3 персонализированных плана от разных AI для сравнения
 
 **Вопросы:**
 📍 Направление путешествия
@@ -225,12 +274,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 👥 Количество путешественников  
 🎯 Ваши интересы
 
-**YandexGPT создаст для вас:**
-📅 Детальный маршрут по дням
+**AI создаст для вас:**
+📅 Детальные маршруты по дням
 🏨 Рекомендации по проживанию
 🍽️ Советы по питанию
 🚇 Транспортные варианты
 💡 Полезные советы и лайфхаки
+
+**Особенность:** Вы получите 3 разных плана от разных AI-моделей для сравнения!
 
 Начните с /start для планирования! ✈️
     """
@@ -238,10 +289,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Проверка статуса сервисов"""
-    from src.ai_yandexgpt import yandex_gpt
-    
-    # Проверяем статус YandexGPT
-    yandex_status = "✅ Доступен" if yandex_gpt else "❌ Недоступен"
+    try:
+        from src.ai_openrouter import openrouter_ai
+        openrouter_status = "✅ Доступен"
+        models_count = len(openrouter_ai.available_models)
+    except ImportError:
+        openrouter_status = "❌ Недоступен"
+        models_count = 0
+    except Exception as e:
+        openrouter_status = f"❌ Ошибка: {e}"
+        models_count = 0
     
     # Проверяем Redis
     redis_status = "✅ Подключен" if redis_manager and redis_manager.redis_client else "⚠️ Временное хранилище"
@@ -249,13 +306,16 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = f"""
 🔍 **Статус сервисов:**
 
-🤖 YandexGPT: {yandex_status}
+🤖 OpenRouter AI: {openrouter_status}
+📊 Доступно моделей: {models_count}
 💾 Хранилище: {redis_status}
-📊 Пользователей в памяти: {len(temp_storage)}
+👥 Пользователей в памяти: {len(temp_storage)}
 
 💡 **Статистика:**
 - Активные диалоги: {sum(1 for data in temp_storage.values() if data.get('state') is not None)}
 - Всего пользователей: {len(temp_storage)}
+
+🎲 **При каждом запросе бот случайно выбирает 3 модели из {models_count} доступных**
     """
     
     await update.message.reply_text(status_text)
@@ -269,7 +329,7 @@ def main() -> None:
     global redis_manager
     
     logger.info("=" * 50)
-    logger.info("🚀 STARTING TRAVEL BOT WITH YANDEXGPT...")
+    logger.info("🚀 STARTING TRAVEL BOT WITH OPENROUTER...")
     logger.info("=" * 50)
     
     # Проверяем переменные окружения
@@ -295,12 +355,12 @@ def main() -> None:
         logger.warning(f"⚠️ Redis initialization failed: {e}")
         logger.info("🔄 Continuing with temporary storage...")
     
-    # Инициализируем YandexGPT
+    # Инициализируем OpenRouter
     try:
-        from src.ai_yandexgpt import yandex_gpt
-        logger.info("✅ YandexGPT initialized successfully!")
+        from src.ai_openrouter import openrouter_ai
+        logger.info(f"✅ OpenRouter AI initialized successfully with {len(openrouter_ai.available_models)} models!")
     except Exception as e:
-        logger.error(f"❌ YandexGPT initialization failed: {e}")
+        logger.error(f"❌ OpenRouter initialization failed: {e}")
     
     try:
         # Создаем Application
@@ -329,7 +389,7 @@ def main() -> None:
         application.add_error_handler(error_handler)
 
         # Запускаем бота
-        logger.info("✅ Bot starting polling with YandexGPT...")
+        logger.info("✅ Bot starting polling with OpenRouter...")
         application.run_polling()
         
     except Exception as e:

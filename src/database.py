@@ -42,13 +42,19 @@ class RedisManager:
                 break
     
     def set_user_state(self, user_id, state):
+        """Устанавливаем состояние пользователя"""
         if self.redis_client:
             try:
+                # Добавляем проверку для state
+                if state is None:
+                    state = ""
+                    
                 self.redis_client.set(f"user:{user_id}:state", state, ex=3600)
             except Exception as e:
                 logging.error(f"Redis set error: {e}")
     
     def get_user_state(self, user_id):
+        """Получаем состояние пользователя"""
         if self.redis_client:
             try:
                 return self.redis_client.get(f"user:{user_id}:state")
@@ -57,14 +63,20 @@ class RedisManager:
         return None
     
     def set_user_data(self, user_id, key, value):
+        """Сохраняем данные пользователя"""
         if self.redis_client:
             try:
+                # Заменяем None на пустую строку чтобы избежать ошибок Redis
+                if value is None:
+                    value = ""
+                    
                 self.redis_client.hset(f"user:{user_id}:data", key, value)
                 self.redis_client.expire(f"user:{user_id}:data", 3600)
             except Exception as e:
                 logging.error(f"Redis hset error: {e}")
     
     def get_user_data(self, user_id, key):
+        """Получаем данные пользователя"""
         if self.redis_client:
             try:
                 return self.redis_client.hget(f"user:{user_id}:data", key)
@@ -73,6 +85,7 @@ class RedisManager:
         return None
     
     def get_all_user_data(self, user_id):
+        """Получаем все данные пользователя"""
         if self.redis_client:
             try:
                 return self.redis_client.hgetall(f"user:{user_id}:data")

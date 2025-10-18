@@ -7,11 +7,6 @@ services:
       # Telegram
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       
-      # Yandex Cloud (опционально)
-      - YANDEX_API_KEY=${YANDEX_API_KEY:-}
-      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID:-}
-      - YANDEX_IAM_TOKEN=${YANDEX_IAM_TOKEN:-}
-      
       # OpenRouter
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}
